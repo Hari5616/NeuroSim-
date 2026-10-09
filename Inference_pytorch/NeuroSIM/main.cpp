@@ -226,7 +226,13 @@ int main(int argc, char * argv[]) {
     
     double numComputation = 0;
     for (int i=0; i<netStructure.size(); i++) {
-        numComputation += 2*(netStructure[i][0] * netStructure[i][1] * netStructure[i][2] * netStructure[i][3] * netStructure[i][4] * netStructure[i][5]);
+        // PATCH (stride-aware op count): use the real number of output positions (same formula as numWindows() in Chip.cpp)
+        int padH = (int)netStructure[i][3] / 2;
+        int padW = (int)netStructure[i][4] / 2;
+        int stride = (int)netStructure[i][7];
+        double outH = ((int)netStructure[i][0] + 2*padH - (int)netStructure[i][3]) / stride + 1;
+        double outW = ((int)netStructure[i][1] + 2*padW - (int)netStructure[i][4]) / stride + 1;
+        numComputation += 2*(outH * outW * netStructure[i][2] * netStructure[i][3] * netStructure[i][4] * netStructure[i][5]);
     }
 
     
