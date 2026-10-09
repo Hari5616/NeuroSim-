@@ -684,6 +684,18 @@ vector<double> ChipCalculateArea(InputParameter& inputParameter, Technology& tec
 }
 
 // Anni update: add double *leakageSRAMInUse
+// PATCH (same-padding window count): number of sliding-window positions of layer l.
+// Output size per dimension = floor((IFM + 2*pad - K)/stride) + 1 with pad = K/2 (integer division),
+// which equals IFM/stride for 'same' 3x3 / 1x1 layers and matches the PyTorch wrapper (padding = K//2).
+static double numWindows(const vector<vector<double> > &netStructure, int l) {
+	int padH = (int)netStructure[l][3] / 2;
+	int padW = (int)netStructure[l][4] / 2;
+	int stride = (int)netStructure[l][7];
+	int outH = ((int)netStructure[l][0] + 2*padH - (int)netStructure[l][3]) / stride + 1;
+	int outW = ((int)netStructure[l][1] + 2*padW - (int)netStructure[l][4]) / stride + 1;
+	return (double)outH * (double)outW;
+}
+
 double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech, MemCell& cell, int layerNumber, const string &newweightfile, const string &oldweightfile, const string &inputfile, bool followedByMaxPool, 
 							const vector<vector<double> > &netStructure, const vector<int> &markNM, const vector<vector<double> > &numTileEachLayer, const vector<vector<double> > &utilizationEachLayer, 
 							const vector<vector<double> > &speedUpEachLayer, const vector<vector<double> > &tileLocaEachLayer, double numPENM, double desiredPESizeNM, double desiredTileSizeCM, 
@@ -740,7 +752,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 		maxPool->clkFreq = param->clkFreq; 
 	}
 
-	int numInVector = (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+	int numInVector = numWindows(netStructure, l);
 	
 	// 230920 update
 	int totalNumTile = 0;
@@ -749,10 +761,10 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 	for (int i=0; i<netStructure.size(); i++) {
 		totalNumTile += numTileEachLayer[0][i] * numTileEachLayer[1][i];
 		if (markNM[l]==0){
-			totalInput += netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+			totalInput += netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * numWindows(netStructure, l);
 		}
 		else {
-			totalInput += netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+			totalInput += netStructure[l][2]*netStructure[l][4] * numWindows(netStructure, l);
 		}	
 	
 	}
@@ -883,7 +895,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 			if (param->globalBusType) {
 				
 				// 230920 update
-				double fraction = netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+				double fraction = netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * numWindows(netStructure, l);
 
 				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/floor(GhTree->busWidth*(fraction/totalInput))));
 				else GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], CMTileheight, CMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))));
@@ -914,7 +926,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 
 			// 230920 update
 			if (param->sync_data_transfer) {
-				double fraction = netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+				double fraction = netStructure[l][2]*netStructure[l][3]*netStructure[l][4] * numWindows(netStructure, l);
 				
 				globalBuffer->readLatency *= chip_bufferclk * ceil(totalInput/fraction);
 				globalBuffer->writeLatency *= chip_bufferclk * ceil(totalInput/fraction);
@@ -1054,7 +1066,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 			if (param->globalBusType) {
 
 				// 230920 update
-				double fraction = netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+				double fraction = netStructure[l][2]*netStructure[l][4] * numWindows(netStructure, l);
 				
 				if (param->novelMapping && param->sync_data_transfer) GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/floor(GhTree->busWidth*(fraction/totalInput))));
 				else GhTree->CalculateLatency(0, 0, tileLocaEachLayer[0][l], tileLocaEachLayer[1][l], NMTileheight, NMTilewidth, ceil((numBitToLoadOut+numBitToLoadIn)/ceil(GhTree->busWidth*(numTileEachLayer[0][l]*numTileEachLayer[1][l]/totalNumTile))));
@@ -1085,7 +1097,7 @@ double ChipCalculatePerformance(InputParameter& inputParameter, Technology& tech
 
 			// 230920 update
 			if (param->sync_data_transfer) {				
-				double fraction = netStructure[l][2]*netStructure[l][4] * (netStructure[l][0]-netStructure[l][3]+1)/netStructure[l][7]*(netStructure[l][1]-netStructure[l][4]+1)/netStructure[l][7];
+				double fraction = netStructure[l][2]*netStructure[l][4] * numWindows(netStructure, l);
 				globalBuffer->readLatency *= chip_bufferclk * ceil(totalInput/fraction);
 				globalBuffer->writeLatency *= chip_bufferclk * ceil(totalInput/fraction);
 			}
