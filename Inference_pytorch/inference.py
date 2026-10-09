@@ -122,6 +122,11 @@ if args.parallelRead < args.subArray and args.cellBit > 1:
     logger('=====================================================================================\n')
     exit()
 
+# [ADDED] progress tracking
+total_batches = len(test_loader)
+batch_start_time = time.time()
+seen = 0
+
 # for data, target in test_loader:
 for i, (data, target) in enumerate(test_loader):
     if i==0:
@@ -138,6 +143,12 @@ for i, (data, target) in enumerate(test_loader):
         correct += pred.cpu().eq(indx_target).sum()
     if i==0:
         hook.remove_hook_list(hook_handle_list)
+    # [ADDED] per-batch progress output
+    seen += data.size(0)
+    elapsed = time.time() - batch_start_time
+    running_acc = 100. * correct.item() / seen
+    print(f"[progress] batch {i+1}/{total_batches}  elapsed={elapsed:.1f}s  running_acc={running_acc:.2f}%", flush=True)
+
 
 test_loss = test_loss / len(test_loader)  # average over number of mini-batch
 acc = 100. * correct / len(test_loader.dataset)
